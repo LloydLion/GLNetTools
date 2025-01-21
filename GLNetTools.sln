@@ -3,7 +3,25 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.35222.181
 MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLNetTools.Common", "GLNetTools.Common\GLNetTools.Common.csproj", "{7E510B4D-2C27-4F95-872B-0F849A141FA6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLNetTools.Common.IPC", "GLNetTools.Common.IPC\GLNetTools.Common.IPC.csproj", "{5EC33451-25FC-4935-9543-011739FF8A84}"
+EndProject
 Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7E510B4D-2C27-4F95-872B-0F849A141FA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7E510B4D-2C27-4F95-872B-0F849A141FA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7E510B4D-2C27-4F95-872B-0F849A141FA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7E510B4D-2C27-4F95-872B-0F849A141FA6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5EC33451-25FC-4935-9543-011739FF8A84}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5EC33451-25FC-4935-9543-011739FF8A84}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5EC33451-25FC-4935-9543-011739FF8A84}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5EC33451-25FC-4935-9543-011739FF8A84}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
