@@ -68,6 +68,11 @@ namespace GLNetTools.Common.IPC.LowLevel
 			return jsonSerializer;
 		}
 
+		public bool ShouldDisconnectByTimeout(DateTime lastMessage)
+		{
+			return DateTime.UtcNow - lastMessage >= TimeSpan.FromSeconds(10);
+		}
+
 
 		private class PropertyObjectConverter : JsonConverter<PropertyObject>
 		{

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using GLNetTools.Common.IPC.LowLevel;
 
 namespace GLNetTools.Common.IPC.UDPImplementation
@@ -12,6 +13,7 @@ namespace GLNetTools.Common.IPC.UDPImplementation
 		private readonly Socket _udp;
 		private readonly ICommunicationAgent _agent;
 		private readonly Thread _receiveThread;
+		private readonly Thread _heartbeatThread;
 		private IIPCChannelHandler? _channelHandler;
 		private IPEndPoint? _remoteEndPoint;
 		private bool _isRemoteAlive;
@@ -22,6 +24,7 @@ namespace GLNetTools.Common.IPC.UDPImplementation
 		{
 			_udp = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 			_receiveThread = new Thread(ReceiveThreadHandler);
+			_heartbeatThread = new Thread(HeartbeatThreadHandler);
 			_agent = agent;
 		}
 
@@ -57,8 +60,10 @@ namespace GLNetTools.Common.IPC.UDPImplementation
 		public void Disconnect()
 		{
 			SendLLMessage(_agent.CreateDropConnection());
+			_isRemoteAlive = false;
 			_isConnected = false;
-			_receiveThread.Join();
+			if (Environment.CurrentManagedThreadId != _receiveThread.ManagedThreadId)
+				_receiveThread.Join();
 			_udp.Close();
 		}
 
@@ -114,24 +119,35 @@ namespace GLNetTools.Common.IPC.UDPImplementation
 
 		private void ReceiveThreadHandler()
 		{
-			_udp.ReceiveTimeout = 1000;
-			EndPoint rep = new IPEndPoint(IPAddress.Any, LocalPort);
-			var buffer = new byte[10241];
-
-			while (_isConnected)
+			try
 			{
-				try
+				DateTime lastRecievedMessage = DateTime.UtcNow;
+				_udp.ReceiveTimeout = 1000;
+				EndPoint rep = new IPEndPoint(IPAddress.Any, LocalPort);
+				var buffer = new byte[10241];
+
+				while (_isConnected)
 				{
-					_udp.ReceiveFrom(buffer, ref rep);
-					if (Equals(rep, RemoteEndPoint) == false)
-						continue;
+					try
+					{
+						_udp.ReceiveFrom(buffer, ref rep);
+						if (Equals(rep, RemoteEndPoint) == false)
+							continue;
 
+						lastRecievedMessage = DateTime.UtcNow;
+					}
+					catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
+					{
+						// Got timeout
+					}
 
+					if (_agent.ShouldDisconnectByTimeout(lastRecievedMessage))
+						_isRemoteAlive = false;
 				}
-				catch (SocketException)
-				{
-
-				}
+			}
+			catch (Exception)
+			{
+				Disconnect();
 			}
 		}
 

@@ -1,4 +1,5 @@
-﻿namespace GLNetTools.Common.IPC.LowLevel
+﻿
+namespace GLNetTools.Common.IPC.LowLevel
 {
 	public interface ICommunicationAgent
 	{
@@ -14,5 +15,7 @@
 		public LowLevelMessage CreateDropConnection();
 
 		public LowLevelMessage CreateEventUpdateMessage(string objectName, PropertyObject updatedValues);
+
+		public bool ShouldDisconnectByTimeout(DateTime lastMessage);
 	}
 }
