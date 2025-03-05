@@ -1,142 +1,112 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 
-namespace GitHub.JPMikkers.DHCP
+namespace GitHub.JPMikkers.DHCP;
+
+public class Utils
 {
-    public class Utils
+    public static TimeSpan InfiniteTimeSpan = TimeSpan.FromSeconds(UInt32.MaxValue);
+
+    public static bool IsInfiniteTimeSpan(TimeSpan timeSpan)
     {
-        public static TimeSpan InfiniteTimeSpan = TimeSpan.FromSeconds(UInt32.MaxValue);
+        return (timeSpan < TimeSpan.FromSeconds(0.0) || timeSpan >= InfiniteTimeSpan);
+    }
 
-        public static bool IsInfiniteTimeSpan(TimeSpan timeSpan)
+    public static TimeSpan SanitizeTimeSpan(TimeSpan timeSpan)
+    {
+        return IsInfiniteTimeSpan(timeSpan) ? InfiniteTimeSpan : timeSpan;
+    }
+
+    public static bool ByteArraysAreEqual(byte[] array1, byte[] array2)
+    {
+        if(array1.Length != array2.Length)
         {
-            return (timeSpan < TimeSpan.FromSeconds(0.0) || timeSpan >= InfiniteTimeSpan);
+            return false;
         }
 
-        public static TimeSpan SanitizeTimeSpan(TimeSpan timeSpan)
+        for(int i = 0; i < array1.Length; i++)
         {
-            return IsInfiniteTimeSpan(timeSpan) ? InfiniteTimeSpan : timeSpan;
-        }
-
-        public static bool ByteArraysAreEqual(byte[] array1, byte[] array2)
-        {
-            if(array1.Length != array2.Length)
+            if(array1[i] != array2[i])
             {
                 return false;
             }
-
-            for(int i = 0; i < array1.Length; i++)
-            {
-                if(array1[i] != array2[i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
 
-        public static string BytesToHexString(byte[] data, string separator)
+        return true;
+    }
+
+    public static string BytesToHexString(byte[] data, string separator)
+    {
+        return string.IsNullOrEmpty(separator) ? 
+            Convert.ToHexString(data) : string.Join(separator, Convert.ToHexString(data).Chunk(2).Select(x => new string(x)));
+    }
+
+    public static byte[] HexStringToBytes(string data)
+    {
+        // strip separator chars, anything not 0-9/A-F
+        var sb = new ReadOnlySpan<char>(data.Where(c => Char.IsAsciiHexDigit(c)).ToArray());
+        // remove spurious trailing nibble before converting
+        return Convert.FromHexString(sb[..(sb.Length & ~1)]);
+    }
+
+    public static IPAddress GetSubnetMask(IPAddress address)
+    {
+        foreach(NetworkInterface adapter in NetworkInterface.GetAllNetworkInterfaces())
         {
-            StringBuilder sb = new StringBuilder();
-            for(int t = 0; t < data.Length; t++)
+            foreach(UnicastIPAddressInformation unicastIPAddressInformation in adapter.GetIPProperties().UnicastAddresses)
             {
-                sb.AppendFormat("{0:X2}", data[t]);
-                if(t < (data.Length - 1))
+                if(unicastIPAddressInformation.Address.AddressFamily == AddressFamily.InterNetwork)
                 {
-                    sb.Append(separator);
-                }
-            }
-            return sb.ToString();
-        }
-
-        public static byte[] HexStringToBytes(string data)
-        {
-            int c;
-            List<byte> result = new List<byte>();
-
-            MemoryStream ms = new MemoryStream();
-            StreamWriter sw = new StreamWriter(ms);
-            sw.Write(data);
-            sw.Flush();
-            ms.Position = 0;
-            StreamReader sr = new StreamReader(ms);
-
-            StringBuilder number = new StringBuilder();
-
-            while((c = sr.Read()) > 0)
-            {
-                if((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
-                {
-                    number.Append((char)c);
-
-                    if(number.Length >= 2)
+                    if(address.Equals(unicastIPAddressInformation.Address))
                     {
-                        result.Add(Convert.ToByte(number.ToString(), 16));
-                        number.Length = 0;
+                        // the following mask can be null.. return 255.255.255.0 in that case
+                        return unicastIPAddressInformation.IPv4Mask ?? new IPAddress(new byte[] { 255, 255, 255, 0 });
                     }
                 }
             }
-            return result.ToArray();
         }
+        throw new ArgumentException($"Can't find subnetmask for IP address '{address}'");
+    }
 
-        public static IPAddress GetSubnetMask(IPAddress address)
-        {
-            foreach(NetworkInterface adapter in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                foreach(UnicastIPAddressInformation unicastIPAddressInformation in adapter.GetIPProperties().UnicastAddresses)
-                {
-                    if(unicastIPAddressInformation.Address.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        if(address.Equals(unicastIPAddressInformation.Address))
-                        {
-                            // the following mask can be null.. return 255.255.255.0 in that case
-                            return unicastIPAddressInformation.IPv4Mask ?? new IPAddress(new byte[] { 255, 255, 255, 0 });
-                        }
-                    }
-                }
-            }
-            throw new ArgumentException($"Can't find subnetmask for IP address '{address}'");
-        }
+    public static IPAddress UInt32ToIPAddress(UInt32 address)
+    {
+        return new IPAddress(new byte[] {
+            (byte)((address>>24) & 0xFF) ,
+            (byte)((address>>16) & 0xFF) ,
+            (byte)((address>>8)  & 0xFF) ,
+            (byte)( address & 0xFF)});
+    }
 
-        public static IPAddress UInt32ToIPAddress(UInt32 address)
-        {
-            return new IPAddress(new byte[] {
-                (byte)((address>>24) & 0xFF) ,
-                (byte)((address>>16) & 0xFF) ,
-                (byte)((address>>8)  & 0xFF) ,
-                (byte)( address & 0xFF)});
-        }
+    public static UInt32 IPAddressToUInt32(IPAddress address)
+    {
+        return
+            (((UInt32)address.GetAddressBytes()[0]) << 24) |
+            (((UInt32)address.GetAddressBytes()[1]) << 16) |
+            (((UInt32)address.GetAddressBytes()[2]) << 8) |
+            (((UInt32)address.GetAddressBytes()[3]));
+    }
 
-        public static UInt32 IPAddressToUInt32(IPAddress address)
+    public static string PrefixLines(string src, string prefix)
+    {
+        StringBuilder sb = new StringBuilder();
+        MemoryStream ms = new MemoryStream();
+        StreamWriter sw = new StreamWriter(ms);
+        sw.Write(src);
+        sw.Flush();
+        ms.Position = 0;
+        StreamReader sr = new StreamReader(ms);
+        string? line;
+        while((line = sr.ReadLine()) != null)
         {
-            return
-                (((UInt32)address.GetAddressBytes()[0]) << 24) |
-                (((UInt32)address.GetAddressBytes()[1]) << 16) |
-                (((UInt32)address.GetAddressBytes()[2]) << 8) |
-                (((UInt32)address.GetAddressBytes()[3]));
+            sb.Append(prefix);
+            sb.AppendLine(line);
         }
-
-        public static string PrefixLines(string src, string prefix)
-        {
-            StringBuilder sb = new StringBuilder();
-            MemoryStream ms = new MemoryStream();
-            StreamWriter sw = new StreamWriter(ms);
-            sw.Write(src);
-            sw.Flush();
-            ms.Position = 0;
-            StreamReader sr = new StreamReader(ms);
-            string line;
-            while((line = sr.ReadLine()) != null)
-            {
-                sb.Append(prefix);
-                sb.AppendLine(line);
-            }
-            return sb.ToString();
-        }
+        return sb.ToString();
     }
 }
