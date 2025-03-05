@@ -1,5 +1,12 @@
 ﻿using GLNetTools.NetworkConfigurationService;
 
+#if DEBUG
+Console.WriteLine("Waiting for debugger to attach");
+while (!System.Diagnostics.Debugger.IsAttached)
+    Thread.Yield();
+Console.WriteLine("Debugger attached");
+#endif
+
 IServiceConfigurationProvider configurationProvider = new ProxmoxBasedConfigurationProvider(new ProxmoxBasedConfigurationProvider.Options());
 
 var configuration = await configurationProvider.FetchConfigurationAsync();
