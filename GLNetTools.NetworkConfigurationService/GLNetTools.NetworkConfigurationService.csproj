@@ -9,8 +9,11 @@
 
   <ItemGroup>
     <PackageReference Include="DNS" Version="7.0.0" />
-    <PackageReference Include="DotNetProjects.DhcpServer" Version="2.0.26" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JPMikkers.DHCP\JPMikkers.DHCP.csproj" />
   </ItemGroup>
 
   <ItemGroup>
