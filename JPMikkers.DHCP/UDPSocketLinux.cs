@@ -33,11 +33,12 @@ public class UDPSocketLinux : IUDPSocket
 
     public UDPSocketLinux(IPEndPoint localEndPoint, int maxPacketSize, bool dontFragment, short ttl)
     {
-        foreach(var nic in NetworkInterface.GetAllNetworkInterfaces())
-        {
-            Console.WriteLine($"{nic.Id}");
+        // Removed from original code by GLNetTools authors
+        //foreach(var nic in NetworkInterface.GetAllNetworkInterfaces())
+        //{
+        //    Console.WriteLine($"{nic.Id}");
 
-        }
+        //}
 
         var selectedNic = NetworkInterface.GetAllNetworkInterfaces()
             .Where(x => x.GetIPProperties().UnicastAddresses.Select(a => a.Address).Contains(localEndPoint.Address))

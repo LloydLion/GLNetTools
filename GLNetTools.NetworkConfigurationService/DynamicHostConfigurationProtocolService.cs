@@ -8,11 +8,26 @@ namespace GLNetTools.NetworkConfigurationService
 	internal class DynamicHostConfigurationProtocolService : INetworkService
 	{
 		private DHCPServer? _server;
+		private readonly ILogger<DynamicHostConfigurationProtocolService> _logger;
 
 
-		public void Setup(ServiceConfiguration configuration)
+		public DynamicHostConfigurationProtocolService(ILogger<DynamicHostConfigurationProtocolService> logger)
 		{
+			_logger = logger;
+		}
+
+
+		public bool Setup(ServiceConfiguration configuration)
+		{
+			if (configuration.MainInterface is null)
+			{
+				_logger.LogCritical("DHCP service cannot setup in critical mode");
+				return false;
+			}
+
 			var ip = configuration.MainInterface.GetIPProperties().UnicastAddresses.First(s => s.Address.AddressFamily == AddressFamily.InterNetwork);
+			_logger.LogDebug("Using {IPAddress}:67 for DHCP server", ip.Address);
+
 			Span<byte> address = stackalloc byte[4];
 			ip.Address.TryWriteBytes(address, out _);
 
@@ -20,11 +35,8 @@ namespace GLNetTools.NetworkConfigurationService
 			var poolStart = new IPAddress(address);
 			address[3] = 250;
 			var poolEnd = new IPAddress(address);
-
-			File.Delete("dhcp_clients.xml");
-			
-			_server = new DHCPServer(new StubLogger("server"), new DefaultUDPSocketFactory(new StubLogger("sockets")))
-
+						
+			_server = new DHCPServer(_logger, new DefaultUDPSocketFactory(_logger))
 			{
 				EndPoint = new IPEndPoint(ip.Address, 67),
 				LeaseTime = TimeSpan.MaxValue,
@@ -45,7 +57,7 @@ namespace GLNetTools.NetworkConfigurationService
 			var reservations = new List<ReservationItem>();
 			foreach (var gm in configuration.Machines)
 			{
-				address[3] = (byte)gm.Id;
+				address[3] = gm.Id;
 				var targetIP = new IPAddress(address);
 
 				reservations.Add(new ReservationItem()
@@ -55,10 +67,11 @@ namespace GLNetTools.NetworkConfigurationService
 					PoolEnd = targetIP,
 					Preempt = true
 				});
+				_logger.LogDebug("Added DHCP reservation for {MIPA} (GM={ID}) <=> {IPAddress}", gm.MainInterfacePhysicalAddress, gm.Id, targetIP);
 			}
-			_server.Reservations = reservations;
 
-			_server.OnStatusChange += (s, e) => Console.WriteLine(e?.Reason);
+			_server.Reservations = reservations;
+			return true;
 		}
 
 		public void Start()
@@ -66,26 +79,6 @@ namespace GLNetTools.NetworkConfigurationService
 			if (_server is null)
 				throw new InvalidOperationException("Setup service first");
 			_server.Start();
-		}
-
-
-		private class StubLogger(string category) : ILogger
-		{
-			public IDisposable? BeginScope<TState>(TState state) where TState : notnull
-			{
-				return null;
-			}
-
-			public bool IsEnabled(LogLevel logLevel)
-			{
-				return true;
-			}
-
-			public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-			{
-				Console.WriteLine($"DHCP [{category}]: ");
-				Console.WriteLine(formatter(state, exception));
-			}
 		}
 	}
 }

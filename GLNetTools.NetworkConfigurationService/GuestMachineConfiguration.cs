@@ -2,5 +2,5 @@
 
 namespace GLNetTools.NetworkConfigurationService
 {
-	internal record GuestMachineConfiguration(int Id, string Name, PhysicalAddress MainInterfacePhysicalAddress);
+	internal record GuestMachineConfiguration(byte Id, string Name, PhysicalAddress MainInterfacePhysicalAddress);
 }

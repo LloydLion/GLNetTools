@@ -5,9 +5,9 @@ namespace GLNetTools.NetworkConfigurationService
 {
 	internal record ServiceConfiguration(
 		IReadOnlyCollection<GuestMachineConfiguration> Machines,
-		string DNSZone,
+		string DNSZones,
 		IPAddress FallbackDNSServer,
-		NetworkInterface MainInterface,
+		NetworkInterface? MainInterface,
 		string ServerName
 	);
 }
