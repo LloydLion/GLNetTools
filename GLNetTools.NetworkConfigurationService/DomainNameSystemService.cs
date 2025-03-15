@@ -40,17 +40,16 @@ namespace GLNetTools.NetworkConfigurationService
 			Span<byte> address = stackalloc byte[4];
 			ip.Address.TryWriteBytes(address, out _);
 
-			var zones = configuration.DNSZones.Split(";");
 			foreach (var gm in configuration.Machines)
 			{
 				address[3] = gm.Id;
 				var ipAddress = new IPAddress(address);
 				
-				foreach (var zone in zones)
+				foreach (var zone in configuration.DNSZones)
 				{
 					try
 					{
-						var domain = new Domain(gm.Name + "." + configuration.DNSZones);
+						var domain = formDomain(zone, gm);
 						masterFile.AddIPAddressResourceRecord(domain, ipAddress);
 						_logger.LogDebug("A {Domain} -> {Address} added to master file", domain, ipAddress);
 					}
@@ -73,6 +72,14 @@ namespace GLNetTools.NetworkConfigurationService
 				var answers = string.Join(", ", args.Response.AnswerRecords);
 
 				_logger.LogDebug("Request from {RemoteEndPoint} for [{Questions}] satisfied with [{Answers}]", args.Remote, questions, answers);
+			}
+
+			Domain formDomain(string template, GuestMachineConfiguration gm)
+			{
+				template = template.Replace("{Name}", gm.Name);
+				template = template.Replace("{Id}", gm.Id.ToString());
+				template = template.Replace("{ServerName}", configuration.ServerName);
+				return new Domain(template);
 			}
 		}
 

@@ -28,8 +28,8 @@ var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger<Program>
 var configurationProvider = services.GetRequiredService<IServiceConfigurationProvider>();
 var configuration = await configurationProvider.FetchConfigurationAsync();
 
-logger.LogInformation("Using configuration: DNSZones={DNSZones}, FallbackDNSServer={FallbackDNSServer}, MainInterface={MainInterface}, ServerName={ServerName}",
-	configuration.DNSZones, configuration.FallbackDNSServer, configuration.MainInterface, configuration.ServerName);
+logger.LogInformation("Using configuration: DNSZones=[{DNSZones}], FallbackDNSServer={FallbackDNSServer}, MainInterface={MainInterface}, ServerName={ServerName}",
+	configuration.DNSZones, configuration.FallbackDNSServer, configuration.MainInterface?.Name, configuration.ServerName);
 foreach (var gm in configuration.Machines)
 	logger.LogInformation("Using guest machine configuration: Id={Id}, Name={Name}, MIPA={MIPA}", gm.Id, gm.Name, gm.MainInterfacePhysicalAddress);
 

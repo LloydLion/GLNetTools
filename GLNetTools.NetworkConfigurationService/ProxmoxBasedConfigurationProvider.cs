@@ -29,7 +29,7 @@ namespace GLNetTools.NetworkConfigurationService
 					?? throw new Exception("Invalid config");
 
 				return new ServiceConfiguration(guestMachines,
-					globalConfig.DNSZone,
+					globalConfig.DNSZones,
 					IPAddress.Parse(globalConfig.FallbackDNSServer),
 					NetworkInterface.GetAllNetworkInterfaces().First(s => s.Name == globalConfig.MainInterface),
 					globalConfig.ServerName
@@ -38,7 +38,7 @@ namespace GLNetTools.NetworkConfigurationService
 			catch (Exception ex)
 			{
 				_logger.LogCritical(ex, "Failed to load global configuration (from {GlobalConfigPath}), using anti-crisis configuration", _options.GlobalConfigPath);
-				return new ServiceConfiguration(guestMachines, "failed", IPAddress.Parse("1.1.1.1"), null, "failed.to.load.configuration");
+				return new ServiceConfiguration(guestMachines, ["{Name}.failed"], IPAddress.Parse("1.1.1.1"), null, "failed.to.load.configuration");
 			}
 		}
 
@@ -133,7 +133,7 @@ namespace GLNetTools.NetworkConfigurationService
 
 		private class GlobalConfig
 		{
-			public required string DNSZone { get; init; }
+			public required string[] DNSZones { get; init; }
 
 			public required string FallbackDNSServer { get; init; }
 
