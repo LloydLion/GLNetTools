@@ -1,4 +1,6 @@
-﻿using DNS.Protocol;
+﻿using DNS.Client.RequestResolver;
+using DNS.Protocol;
+using DNS.Protocol.ResourceRecords;
 using DNS.Server;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics.CodeAnalysis;
@@ -33,8 +35,8 @@ namespace GLNetTools.NetworkConfigurationService
 			
 			var ip = mainInterface.GetIPProperties().UnicastAddresses.First(s => s.Address.AddressFamily == AddressFamily.InterNetwork);
 
-			var masterFile = new MasterFile();
-			_server = new DnsServer(masterFile, configuration.FallbackDNSServer);
+			var masterFile = new ConfigurationBasedDNSResolver(configuration.FallbackDNSServer);
+			_server = new DnsServer(masterFile);
 			_server.Responded += logResponded;
 
 			Span<byte> address = stackalloc byte[4];
@@ -50,8 +52,8 @@ namespace GLNetTools.NetworkConfigurationService
 					try
 					{
 						var domain = formDomain(zone, gm);
-						masterFile.AddIPAddressResourceRecord(domain, ipAddress);
-						_logger.LogDebug("A {Domain} -> {Address} added to master file", domain, ipAddress);
+						masterFile.Register(domain, ipAddress);
+						_logger.LogDebug("A {Domain} -> {Address} added to resolver", domain, ipAddress);
 					}
 					catch (Exception ex)
 					{
@@ -65,7 +67,6 @@ namespace GLNetTools.NetworkConfigurationService
 
 
 
-			[SuppressMessage("Usage", "CA2254")]
 			void logResponded(object? sender, DnsServer.RespondedEventArgs args)
 			{
 				var questions = string.Join(", ", args.Request.Questions.Select(s => s.Type.ToString() + "=" + s.Name.ToString()));
@@ -88,6 +89,52 @@ namespace GLNetTools.NetworkConfigurationService
 			if (_server is null)
 				throw new InvalidOperationException("Setup service first");
 			_server.Listen();
+		}
+
+
+		private class ConfigurationBasedDNSResolver : IRequestResolver
+		{
+			private readonly Dictionary<Domain, IPAddress> _map = new();
+			private readonly UdpRequestResolver _fallbackDNSServer;
+
+
+			public ConfigurationBasedDNSResolver(IPAddress fallbackDNSServer)
+			{
+				_fallbackDNSServer = new UdpRequestResolver(new IPEndPoint(fallbackDNSServer, 53));
+			}
+
+
+			public void Register(Domain domain, IPAddress ipAddress)
+			{
+				_map.Add(domain, ipAddress);
+			}
+
+			public async Task<IResponse> Resolve(IRequest request, CancellationToken cancellationToken = default)
+			{
+				IResponse response = Response.FromRequest(request);
+				foreach (Question question in request.Questions)
+				{
+					if (_map.TryGetValue(question.Name, out var address))
+					{
+						if (question.Type == RecordType.A)
+							response.AnswerRecords.Add(new IPAddressResourceRecord(question.Name, address));
+						else response.ResponseCode = ResponseCode.NameError;
+
+					}
+					else
+					{
+						var fallbackResponse = await _fallbackDNSServer.Resolve(new Request(new Header(), [question], []), cancellationToken);
+						if (fallbackResponse.AnswerRecords.Count > 0)
+						{
+							foreach (var answerRecord in fallbackResponse.AnswerRecords)
+								response.AnswerRecords.Add(answerRecord);
+						}
+						else response.ResponseCode = ResponseCode.NameError;
+					}
+				}
+
+				return response;
+			}
 		}
 	}
 }
