@@ -3,8 +3,6 @@ using DNS.Protocol;
 using DNS.Protocol.ResourceRecords;
 using DNS.Server;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 
@@ -38,6 +36,7 @@ namespace GLNetTools.NetworkConfigurationService
 			var masterFile = new ConfigurationBasedDNSResolver(configuration.FallbackDNSServer);
 			_server = new DnsServer(masterFile);
 			_server.Responded += logResponded;
+			_server.Errored += logErrored;
 
 			Span<byte> address = stackalloc byte[4];
 			ip.Address.TryWriteBytes(address, out _);
@@ -73,6 +72,11 @@ namespace GLNetTools.NetworkConfigurationService
 				var answers = string.Join(", ", args.Response.AnswerRecords);
 
 				_logger.LogDebug("Request from {RemoteEndPoint} for [{Questions}] satisfied with [{Answers}]", args.Remote, questions, answers);
+			}
+
+			void logErrored(object? sender, DnsServer.ErroredEventArgs args)
+			{
+				_logger.LogError(args.Exception, "Error during processing request");
 			}
 
 			Domain formDomain(string template, GuestMachineConfiguration gm)
@@ -112,6 +116,7 @@ namespace GLNetTools.NetworkConfigurationService
 			public async Task<IResponse> Resolve(IRequest request, CancellationToken cancellationToken = default)
 			{
 				IResponse response = Response.FromRequest(request);
+				bool shouldNotFallback = false;
 				foreach (Question question in request.Questions)
 				{
 					if (_map.TryGetValue(question.Name, out var address))
@@ -119,20 +124,14 @@ namespace GLNetTools.NetworkConfigurationService
 						if (question.Type == RecordType.A)
 							response.AnswerRecords.Add(new IPAddressResourceRecord(question.Name, address));
 						else response.ResponseCode = ResponseCode.NameError;
-
-					}
-					else
-					{
-						var fallbackResponse = await _fallbackDNSServer.Resolve(new Request(new Header(), [question], []), cancellationToken);
-						if (fallbackResponse.AnswerRecords.Count > 0)
-						{
-							foreach (var answerRecord in fallbackResponse.AnswerRecords)
-								response.AnswerRecords.Add(answerRecord);
-						}
-						else response.ResponseCode = ResponseCode.NameError;
+						shouldNotFallback = true;
 					}
 				}
 
+				if (shouldNotFallback)
+					return response;
+
+				response = await _fallbackDNSServer.Resolve(request, cancellationToken);
 				return response;
 			}
 		}
