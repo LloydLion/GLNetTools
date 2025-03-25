@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLNetTools.NetworkConfigura
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JPMikkers.DHCP", "JPMikkers.DHCP\JPMikkers.DHCP.csproj", "{4F2230EB-DADF-46E6-868D-B727C3FD52E5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLNetTools.ConfigurationProviderService", "GLNetTools.ConfigurationProviderService\GLNetTools.ConfigurationProviderService.csproj", "{D7554BE3-4BCF-423A-BD9A-6CE5C75F14DA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{4F2230EB-DADF-46E6-868D-B727C3FD52E5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4F2230EB-DADF-46E6-868D-B727C3FD52E5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4F2230EB-DADF-46E6-868D-B727C3FD52E5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D7554BE3-4BCF-423A-BD9A-6CE5C75F14DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D7554BE3-4BCF-423A-BD9A-6CE5C75F14DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D7554BE3-4BCF-423A-BD9A-6CE5C75F14DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D7554BE3-4BCF-423A-BD9A-6CE5C75F14DA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

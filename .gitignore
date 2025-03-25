@@ -3,4 +3,5 @@
 bin/
 obj/
 /GLNetTools.NetworkConfigurationService/service.json
+/GLNetTools.ConfigurationProviderService/service.json
 *.user
