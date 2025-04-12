@@ -1,128 +1,90 @@
-using GLNetTools.ConfigurationProviderService;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
+global using ConfigurationBuilder = GLNetTools.Common.Configuration.ConfigurationBuilder;
+global using IConfigurationBuilder = GLNetTools.Common.Configuration.IConfigurationBuilder;
+global using IConfigurationProvider = GLNetTools.Common.Configuration.IConfigurationProvider;
+using GLNetTools.Common.Configuration;
+using GLNetTools.Common.Configuration.BuiltIn;
+using GLNetTools.ConfigurationProviderService.Providers;
 
-#if DEBUG
-if (args.Contains("--no-dbg") == false)
+namespace GLNetTools.ConfigurationProviderService;
+
+internal class Program
 {
-	Console.WriteLine("Waiting for debugger to attach");
-	while (!System.Diagnostics.Debugger.IsAttached)
-		Thread.Yield();
-	Console.WriteLine("Debugger attached");
-}
+	private static async Task Main(string[] args)
+	{
+#if DEBUG
+		if (args.Contains("--no-dbg") == false)
+		{
+			Console.WriteLine("Waiting for debugger to attach");
+			while (!System.Diagnostics.Debugger.IsAttached)
+				Thread.Yield();
+			Console.WriteLine("Debugger attached");
+		}
 #endif
 
+		var webBuilder = WebApplication.CreateBuilder(args);
 
-var builder = WebApplication.CreateBuilder(args);
+		webBuilder.Services
+			.AddLogging(s => s.AddConsole().SetMinimumLevel(LogLevel.Trace))
 
-builder.Services.AddMvc().AddNewtonsoftJson(options =>
-{
-	options.SerializerSettings.Converters.Add(new StringEnumConverter());
-	options.SerializerSettings.Converters.Add(new ServiceConfigurationConverter());
-	options.SerializerSettings.Converters.Add(new FirewallRuleConverter());
-	options.SerializerSettings.Converters.Add(new GuestMachineIdConverter());
-});
+			.AddSingleton(new ProxmoxBasedConfigurationProvider.Options())
+			.AddTransient<IConfigurationProvider, ProxmoxBasedConfigurationProvider>()
 
-builder.Services
-	.AddLogging(s => s.AddConsole().SetMinimumLevel(LogLevel.Trace))
+			.AddSingleton(new GlobalConfigurationProvider.Options())
+			.AddTransient<IConfigurationProvider, GlobalConfigurationProvider>()
 
-	.AddSingleton(new ProxmoxBasedConfigurationProvider.Options())
-	.AddTransient<IServiceConfigurationProvider, ProxmoxBasedConfigurationProvider>()
+			.AddSingleton<IConfigurationBuilder, ConfigurationBuilder>()
+			.AddSingleton<ConfigurationHolder>()
+			.AddSingleton<ConfigurationProviderDispatcher>()
 
-	.AddSingleton(new GlobalConfigurationProvider.Options())
-	.AddTransient<IServiceConfigurationProvider, GlobalConfigurationProvider>()
-;
+			.AddSingleton<ConfigurationScopeTypeRegistry>()
+			.AddSingleton<ConfigurationModuleRegistry>()
+		;
 
-var app = builder.Build();
-var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<Program>();
+		var app = webBuilder.Build();
+		var logger = app.Services.GetRequiredService<ILogger<Program>>();
+		logger.LogInformation("Application built");
 
-var configBuilder = new ServiceConfigurationBuilder();
-foreach (var provider in app.Services.GetServices<IServiceConfigurationProvider>())
-	await provider.FetchConfigurationAsync(configBuilder);
+		var scopeRegistry = app.Services.GetRequiredService<ConfigurationScopeTypeRegistry>();
+		scopeRegistry.Register(BuiltInScopeTypes.Master);
+		scopeRegistry.Register(BuiltInScopeTypes.GuestMachine);
+		logger.LogTrace("ConfigurationScopeType registration complete");
 
-var configuration = configBuilder.Build();
+		var moduleRegistry = app.Services.GetRequiredService<ConfigurationModuleRegistry>();
+		moduleRegistry.Register(BaseModule.Instance);
+		moduleRegistry.Register(NetworkModule.Instance);
+		logger.LogTrace("ConfigurationScopeType registration complete");
 
-logger.LogInformation("Using configuration: DNSZones=[{DNSZones}], FallbackDNSServer={FallbackDNSServer}, MainInterface={MainInterface}, ServerName={ServerName}",
-	configuration.DNSZones, configuration.FallbackDNSServer, configuration.MainInterface?.Name, configuration.ServerName);
-foreach (var gm in configuration.Machines)
-	logger.LogInformation("Using guest machine configuration: Id={Id}, Name={Name}, MIPA={MIPA}, Rules={RulesCount}",
-		gm.Id, gm.Name, gm.NetworkConfiguration.MainInterfacePhysicalAddress, gm.NetworkConfiguration.Rules.Count);
+		var holder = app.Services.GetRequiredService<ConfigurationHolder>();
+		var dispatcher = app.Services.GetRequiredService<ConfigurationProviderDispatcher>();
 
-app.MapGet("/", () => JsonConvert.SerializeObject(configuration,
-	[new StringEnumConverter(), new ServiceConfigurationConverter(), new FirewallRuleConverter(), new GuestMachineIdConverter()]));
+		await dispatcher.PerformInitialConfigurationLoadAsync(holder);
+		holder.RebuildConfiguration();
+		logger.LogInformation("Initial config load complete");
 
-app.Run();
+		dispatcher.InitializeTracking(holder);
+		dispatcher.EnableTracking();
+		logger.LogInformation("Config tracking initialized and enabled");
 
-class ServiceConfigurationConverter : JsonConverter<ServiceConfiguration>
-{
-	public override ServiceConfiguration? ReadJson(JsonReader reader, Type objectType, ServiceConfiguration? existingValue, bool hasExistingValue, JsonSerializer serializer)
-	{
-		throw new NotImplementedException();
-	}
+		logger.LogInformation("Application is starting...");
 
-	public override void WriteJson(JsonWriter writer, ServiceConfiguration? value, JsonSerializer serializer)
-	{
-		if (value is null)
+		Console.WriteLine("Configuration:");
+		foreach (var scopeType in holder.Configuration.ScopeTypes)
 		{
-			writer.WriteNull();
-			return;
-		}
-
-		serializer.Serialize(writer, new 
-		{
-			Machines = value.Machines.ToDictionary(s => s.Id, s => new
+			Console.WriteLine($"\tScopeType{{Name={scopeType.Name}, KeyType={scopeType.KeyType.FullName}}}:");
+			foreach (var scope in holder.Configuration.FilterScopes(scopeType))
 			{
-				s.Name,
-				NetworkConfiguration = new
+				Console.WriteLine($"\t\tScope{{Key={scope.WeakKey}}}:");
+				foreach (var projection in scope.Projections)
 				{
-					MainInterfacePhysicalAddress = s.NetworkConfiguration.MainInterfacePhysicalAddress.ToString(),
-					s.NetworkConfiguration.Rules
+					Console.WriteLine($"\t\t\tProjection{{Prototype.Module.Name={projection.Key}}}:");
+					foreach (var property in projection.Value.Data)
+					{
+						Console.WriteLine($"\t\t\t\t[{property.Key}] <=> Property{{Type={property.Value.Property.Type.FullName}}} <=> [{property.Value.Value}]");
+					}
 				}
-			}),
-			value.DNSZones,
-			FallbackDNSServer = value.FallbackDNSServer.ToString(),
-			MainInterface = value.MainInterface?.Name,
-			value.ServerName
-		});
-	}
-}
-
-class FirewallRuleConverter : JsonConverter<FirewallRule>
-{
-	public override FirewallRule? ReadJson(JsonReader reader, Type objectType, FirewallRule? existingValue, bool hasExistingValue, JsonSerializer serializer)
-	{
-		throw new NotImplementedException();
-	}
-
-	public override void WriteJson(JsonWriter writer, FirewallRule? value, JsonSerializer serializer)
-	{
-		if (value is null)
-		{
-			writer.WriteNull();
-			return;
+			}
 		}
 
-		serializer.Serialize(writer, new
-		{
-			value.Type,
-			value.SourcePort,
-			value.DestinationPort,
-			value.SourceMachineId,
-			value.DestinationMachineId,
-			Protocol = (byte)value.Protocol
-		});
-	}
-}
-
-class GuestMachineIdConverter : JsonConverter<GuestMachineId>
-{
-	public override GuestMachineId ReadJson(JsonReader reader, Type objectType, GuestMachineId existingValue, bool hasExistingValue, JsonSerializer serializer)
-	{
-		throw new NotImplementedException();
-	}
-
-	public override void WriteJson(JsonWriter writer, GuestMachineId value, JsonSerializer serializer)
-	{
-		writer.WriteValue(value.Id);
+		app.Run();
 	}
 }

@@ -18,7 +18,7 @@
 		};
 
 
-		public string Name { get; } = "Network";
+		public string Name { get; } = "Base";
 
 
 		public ConfigurationModuleProjectionPrototype? ProvidePrototypeFor(ConfigurationScopeType scope)

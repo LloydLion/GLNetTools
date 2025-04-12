@@ -21,12 +21,12 @@
 		}
 
 
-		public ConfigurationModuleProjection CreateProjection(IReadOnlyDictionary<string, object?> values)
+		public ConfigurationModuleProjection CreateProjection(IReadOnlyDictionary<string, object> values)
 		{
 			var linkedValues = Properties.ToDictionary(s => s.Key, s =>
 			{
 				if (values.TryGetValue(s.Key, out var value) == false)
-					value = s.Value.DefaultValue;
+					value = s.Value.DefaultValue ?? throw new Exception($"No value for '{s.Key}' property provided");
 				return new ConfigurationPropertyWithValue(s.Value, value);
 			});
 			return new ConfigurationModuleProjection(this, linkedValues);

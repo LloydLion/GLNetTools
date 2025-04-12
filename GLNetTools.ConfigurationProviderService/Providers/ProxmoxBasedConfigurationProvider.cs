@@ -1,11 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
-using System.Net;
+﻿using GLNetTools.Common;
+using GLNetTools.Common.Configuration;
+using GLNetTools.Common.Configuration.BuiltIn;
 using System.Net.NetworkInformation;
 
-namespace GLNetTools.ConfigurationProviderService
+namespace GLNetTools.ConfigurationProviderService.Providers
 {
-	internal class ProxmoxBasedConfigurationProvider : IServiceConfigurationProvider
+	internal class ProxmoxBasedConfigurationProvider : IConfigurationProvider
 	{
 		private readonly Options _options;
 		private readonly ILogger<ProxmoxBasedConfigurationProvider> _logger;
@@ -17,14 +17,24 @@ namespace GLNetTools.ConfigurationProviderService
 			_logger = logger;
 		}
 
+		public IConfigurationProvider.ITracker CreateTracker()
+		{
+			var vmWatcher = new FileSystemWatcher(Path.Combine(_options.PVEDirectoryBasePath, _options.VirtualMachines.DirectorySubPath));
+			var ctWatcher = new FileSystemWatcher(Path.Combine(_options.PVEDirectoryBasePath, _options.Containers.DirectorySubPath));
 
-		public async Task FetchConfigurationAsync(ServiceConfigurationBuilder builder)
+			var tracker = new Tracker(this, vmWatcher, ctWatcher);
+			tracker.Init();
+
+			return tracker;
+		}
+
+		public async Task ProvideConfigurationAsync(IConfigurationBuilderAccessor builder)
 		{
 			await FetchGMGroupAsync(_options.Containers, builder);
 			await FetchGMGroupAsync(_options.VirtualMachines, builder);
 		}
 
-		private async Task FetchGMGroupAsync(Options.GMGroupFetchOptions loadOptions, ServiceConfigurationBuilder builder)
+		private async Task FetchGMGroupAsync(Options.GMGroupFetchOptions loadOptions, IConfigurationBuilderAccessor builder)
 		{
 			try
 			{
@@ -49,9 +59,15 @@ namespace GLNetTools.ConfigurationProviderService
 						var nameOption = lines.First(s => s.StartsWith(loadOptions.NameParameterName));
 						var name = nameOption.Split(' ')[1];
 
-						builder.CreateGuestMachine(id);
-						builder.SetGuestMachineName(id, name);
-						builder.SetGuestMachineMainInterfacePhysicalAddress(id, hwaddr);
+						builder.EnsureScopeCreated(BuiltInScopeTypes.GuestMachine, id);
+						builder.AddProjection(id, new BaseModule.GuestMachine()
+						{
+							HostName = name
+						});
+						builder.AddProjection(id, new NetworkModule.GuestMachine()
+						{
+							MainInterfacePhysicalAddress = hwaddr,
+						});
 
 						_logger.LogDebug("Loaded configuration PVE configuration file. Id={Id}, Location={ConfigPath}, GroupLoadOptions={LoadOptions}", id, config, loadOptions);
 					}
@@ -66,6 +82,55 @@ namespace GLNetTools.ConfigurationProviderService
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Failed to load part of configuration. GroupLoadOptions={LoadOptions}", loadOptions);
+			}
+		}
+
+
+		private class Tracker : IConfigurationProvider.ITracker
+		{
+			private Action<IConfigurationProvider>? _callback;
+			private bool _enabled = false;
+			private readonly FileSystemWatcher[] _watchers;
+			private readonly IConfigurationProvider _owner;
+
+
+			public Tracker(IConfigurationProvider owner, params FileSystemWatcher[] watchers)
+			{
+				_watchers = watchers;
+				_owner = owner;
+			}
+
+
+			public void Init()
+			{
+				foreach (var watcher in _watchers)
+				{
+					watcher.Changed += WatcherFileChanged;
+					watcher.Created += WatcherFileChanged;
+					watcher.Created += WatcherFileChanged;
+					watcher.Deleted += WatcherFileChanged;
+				}
+			}
+
+			private void WatcherFileChanged(object sender, FileSystemEventArgs e)
+			{
+				if (_enabled && _callback is not null)
+					_callback.Invoke(_owner);
+			}
+
+			public void SetCallback(Action<IConfigurationProvider> callback)
+			{
+				_callback = callback;
+			}
+
+			public void StartTracking()
+			{
+				_enabled = true;
+			}
+
+			public void StopTracking()
+			{
+				_enabled = false;
 			}
 		}
 

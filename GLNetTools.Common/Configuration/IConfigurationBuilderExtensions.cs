@@ -49,7 +49,7 @@ namespace GLNetTools.Common.Configuration
 			where TKey : notnull
 			where TStaticModel : class, IStaticModelWithMetadata<TStaticModel, TKey>
 		{
-			builder.AddProjection(key, model);
+			builder.AddProjection((object)key, model);
 		}
 
 		public static void AddProjection<TStaticModel>(

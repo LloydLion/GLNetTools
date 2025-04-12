@@ -54,9 +54,9 @@
 			public bool ValidateProjection(TStaticModel projection, ConfigurationModuleProjectionStaticPrototype<TStaticModel> prototype, bool isSummedProjection)
 			{
 				if (_strong is not null)
-					return _strong.ValidateProjection(projection, isSummedProjection);
+					return _strong.ValidateProjection(projection, prototype, isSummedProjection);
 
-
+				return _weak!.ValidateProjection(prototype.CreateProjectionStatic(projection), isSummedProjection);
 			}
 
 			ConfigurationModuleProjection IConfigurationModuleProjectionPrototypeBehavior.PerformSum(IEnumerable<ConfigurationModuleProjection> projections)

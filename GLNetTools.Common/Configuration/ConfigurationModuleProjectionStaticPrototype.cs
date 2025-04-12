@@ -20,10 +20,10 @@ namespace GLNetTools.Common.Configuration
 
 		public ConfigurationModuleProjection CreateProjectionStaticWeak(object staticModel)
 		{
-			if (staticModel.GetType() == Layout.StaticType)
+			if (staticModel.GetType() != Layout.StaticType)
 				throw new ArgumentException("Invalid type of model", nameof(staticModel));
 
-			return CreateProjection(Properties.Keys.ToDictionary(s => s, s => Layout.Mapping[s].GetValue(staticModel)));
+			return CreateProjection(Properties.Keys.ToDictionary(s => s, s => Layout.Mapping[s].GetValue(staticModel) ?? throw new NullReferenceException()));
 		}
 
 		public object MapProjectionToStaticModelWeak(ConfigurationModuleProjection projection)
@@ -50,6 +50,7 @@ namespace GLNetTools.Common.Configuration
 			var layout = new StaticModelLayout(staticModel, fields.ToDictionary(s => s.Name));
 
 			return (ConfigurationModuleProjectionStaticPrototype)typeof(ConfigurationModuleProjectionStaticPrototype<>)
+				.MakeGenericType(staticModel)
 				.GetConstructors().Single().Invoke([properties, behavior, layout, module]);
 		}
 
