@@ -4,7 +4,7 @@
 	{
 		public ITracker CreateTracker();
 
-		public Task ProvideConfigurationAsync(IConfigurationBuilder builder);
+		public Task ProvideConfigurationAsync(IConfigurationBuilderAccessor builder);
 
 
 		public interface ITracker

@@ -2,7 +2,8 @@
 {
 	public class ConfigurationBuilder : IConfigurationBuilder
 	{
-		private readonly List<RWScope> _scopes = [];
+		private List<RWScope> _scopes = [];
+		private List<RWScope> _snapshot = [];
 		private IConfigurationProvider? _activeProvider;
 	
 	
@@ -53,6 +54,23 @@
 
 				return ConfigurationScope.CreateWeak(scope.ScopeType, scope.Key, projections);
 			}).ToArray());
+		}
+
+		public void TakeSnapshot()
+		{
+			// Deep _scopes clone
+			_snapshot = _scopes.Select(s => s with
+			{
+				Projections = s.Projections.ToDictionary(s => s.Key, s => s.Value with
+				{
+					Parts = s.Value.Parts.ToDictionary()
+				})
+			}).ToList();
+		}
+
+		public void Rollback()
+		{
+			_scopes = _snapshot;
 		}
 
 

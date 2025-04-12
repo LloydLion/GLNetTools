@@ -16,8 +16,8 @@
 		)
 		{
 			Properties = properties;
-			_behavior = behavior;
 			Module = module;
+			_behavior = behavior;
 		}
 
 
@@ -41,7 +41,9 @@
 
 		public bool ValidateProjection(ConfigurationModuleProjection projection, bool isSummedProjection)
 		{
-
+			if (projection.Prototype != this)
+				throw new ArgumentException("Enable to validate projections of not that prototype", nameof(projection));
+			return _behavior.ValidateProjection(projection, isSummedProjection);
 		}
 	}
 }

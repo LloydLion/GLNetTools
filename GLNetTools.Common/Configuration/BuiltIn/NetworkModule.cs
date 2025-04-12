@@ -14,10 +14,10 @@ namespace GLNetTools.Common.Configuration.BuiltIn
 			ConfigurationModuleProjectionStaticPrototype<GuestMachine>.Create(DefaultBehavior.Instance, Instance);
 
 
-		private readonly Dictionary<string, ConfigurationModuleProjectionPrototype> _prototypes = new()
+		private readonly Dictionary<ConfigurationScopeType, ConfigurationModuleProjectionPrototype> _prototypes = new()
 		{
-			["Master"] = MasterPrototype,
-			["GuestMachine"] = GuestMachinePrototype
+			[BuiltInScopeTypes.Master] = MasterPrototype,
+			[BuiltInScopeTypes.GuestMachine] = GuestMachinePrototype
 		};
 
 
@@ -26,20 +26,20 @@ namespace GLNetTools.Common.Configuration.BuiltIn
 
 		public ConfigurationModuleProjectionPrototype? ProvidePrototypeFor(ConfigurationScopeType scope)
 		{
-			if (_prototypes.TryGetValue(scope.Name, out var prototype))
+			if (_prototypes.TryGetValue(scope, out var prototype))
 				return prototype;
 			else return null;
 		}
 
 
-		public class Master
+		public class Master() : CommonStaticModel<Master, NoScopeKey>(MasterPrototype, BuiltInScopeTypes.Master)
 		{
 			public IPAddress FallbackDNS = IPAddress.Any;
 			public NetworkInterface? MainInterface;
 			public List<string> DNSZones = [];
 		}
 
-		public class GuestMachine
+		public class GuestMachine() : CommonStaticModel<GuestMachine, GuestMachineId>(GuestMachinePrototype, BuiltInScopeTypes.GuestMachine)
 		{
 			public PhysicalAddress MainInterfacePhysicalAddress = PhysicalAddress.None;
 			public List<FirewallRule> FirewallRules = [];

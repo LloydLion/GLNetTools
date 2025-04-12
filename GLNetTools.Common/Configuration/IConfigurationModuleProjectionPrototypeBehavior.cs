@@ -3,12 +3,16 @@
 	public interface IConfigurationModuleProjectionPrototypeBehavior
 	{
 		public ConfigurationModuleProjection PerformSum(IEnumerable<ConfigurationModuleProjection> projections);
+
+		public bool ValidateProjection(ConfigurationModuleProjection projection, bool isSummedProjection);
 	}
 
 	public interface IConfigurationModuleProjectionPrototypeBehavior<TStaticModel>
 		where TStaticModel : class
 	{
-		public TStaticModel PerformSum(IEnumerable<TStaticModel> projections, ConfigurationModuleProjectionPrototype prototype);
+		public TStaticModel PerformSum(IEnumerable<TStaticModel> projections, ConfigurationModuleProjectionStaticPrototype<TStaticModel> prototype);
+
+		public bool ValidateProjection(TStaticModel projection, ConfigurationModuleProjectionStaticPrototype<TStaticModel> prototype, bool isSummedProjection);
 	}
 
 	public static class ConfigurationModuleProjectionPrototypeBehaviorExtensions
@@ -38,23 +42,40 @@
 			}
 
 
+			public bool ValidateProjection(ConfigurationModuleProjection projection, bool isSummedProjection)
+			{
+				if (_weak is not null)
+					return _weak.ValidateProjection(projection, isSummedProjection);
+
+				var prototype = (ConfigurationModuleProjectionStaticPrototype<TStaticModel>)projection.Prototype;
+				return _strong!.ValidateProjection(prototype.MapProjectionToStaticModel(projection), prototype, isSummedProjection);
+			}
+
+			public bool ValidateProjection(TStaticModel projection, ConfigurationModuleProjectionStaticPrototype<TStaticModel> prototype, bool isSummedProjection)
+			{
+				if (_strong is not null)
+					return _strong.ValidateProjection(projection, isSummedProjection);
+
+
+			}
+
 			ConfigurationModuleProjection IConfigurationModuleProjectionPrototypeBehavior.PerformSum(IEnumerable<ConfigurationModuleProjection> projections)
 			{
 				if (_weak is not null)
 					return _weak.PerformSum(projections);
 
-				var prototype = projections.First().Prototype;
+				var prototype = (ConfigurationModuleProjectionStaticPrototype<TStaticModel>)projections.First().Prototype;
 				var resultModel = _strong!.PerformSum(projections.Select(prototype.MapProjectionToStaticModel).OfType<TStaticModel>(), prototype);
-				return prototype.CreateProjection(resultModel);
+				return prototype.CreateProjectionStatic(resultModel);
 			}
 
-			TStaticModel IConfigurationModuleProjectionPrototypeBehavior<TStaticModel>.PerformSum(IEnumerable<TStaticModel> projections, ConfigurationModuleProjectionPrototype prototype)
+			TStaticModel IConfigurationModuleProjectionPrototypeBehavior<TStaticModel>.PerformSum(IEnumerable<TStaticModel> projections, ConfigurationModuleProjectionStaticPrototype<TStaticModel> prototype)
 			{
 				if (_strong is not null)
 					return _strong.PerformSum(projections, prototype);
 
-				var result = _weak!.PerformSum(projections.Select(prototype.CreateProjection));
-				return (TStaticModel)prototype.MapProjectionToStaticModel(result);
+				var result = _weak!.PerformSum(projections.Select(prototype.CreateProjectionStatic));
+				return prototype.MapProjectionToStaticModel(result);
 			}
 		}
 	}
