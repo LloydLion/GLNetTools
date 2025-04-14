@@ -36,7 +36,7 @@ namespace GLNetTools.ConfigurationProviderService.Providers
 				{
 					DNSZones = globalConfig.DNSZones.ToList(),
 					FallbackDNS = IPAddress.Parse(globalConfig.FallbackDNSServer),
-					MainInterface = NetworkInterface.GetAllNetworkInterfaces().First(s => s.Name == globalConfig.MainInterface),
+					MainInterface = globalConfig.MainInterface,
 				});
 				builder.AddProjection(new BaseModule.Master()
 				{

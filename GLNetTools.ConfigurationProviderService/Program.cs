@@ -1,9 +1,13 @@
 global using ConfigurationBuilder = GLNetTools.Common.Configuration.ConfigurationBuilder;
 global using IConfigurationBuilder = GLNetTools.Common.Configuration.IConfigurationBuilder;
 global using IConfigurationProvider = GLNetTools.Common.Configuration.IConfigurationProvider;
+using Newtonsoft.Json;
 using GLNetTools.Common.Configuration;
 using GLNetTools.Common.Configuration.BuiltIn;
 using GLNetTools.ConfigurationProviderService.Providers;
+using GLNetTools.Common.Configuration.JsonSerialization;
+using System.Net;
+using System.Net.NetworkInformation;
 
 namespace GLNetTools.ConfigurationProviderService;
 
@@ -38,6 +42,17 @@ internal class Program
 
 			.AddSingleton<ConfigurationScopeTypeRegistry>()
 			.AddSingleton<ConfigurationModuleRegistry>()
+
+			.AddTransient(sp =>
+			{
+				var j = new JsonSerializer() { Formatting = Formatting.Indented }; 
+				j.Converters.Add(new IPAddressConverter());
+				j.Converters.Add(new PhysicalAddressConverter());
+				return j;
+			})
+			.AddSingleton<IJsonServiceConfigurationSerializer, JsonServiceConfigurationSerializer>()
+
+			.AddTransient<WebController>()
 		;
 
 		var app = webBuilder.Build();
@@ -85,6 +100,32 @@ internal class Program
 			}
 		}
 
+		app.MapGet("/fetch", app.Services.GetRequiredService<WebController>().HandleConfigurationRequest);
+
 		app.Run();
 	}
+
+
+    private class IPAddressConverter : JsonConverter<IPAddress>
+    {
+        public override IPAddress? ReadJson(JsonReader reader, Type objectType, IPAddress? existingValue, bool hasExistingValue, JsonSerializer serializer)
+			=> IPAddress.Parse(reader.ReadAsString()!);
+
+        public override void WriteJson(JsonWriter writer, IPAddress? value, JsonSerializer serializer)
+			=> writer.WriteValue(value?.ToString());
+    }
+
+    private class PhysicalAddressConverter : JsonConverter<PhysicalAddress>
+    {
+        public override PhysicalAddress? ReadJson(JsonReader reader, Type objectType, PhysicalAddress? existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+			var value = reader.ReadAsString();
+			return value is null ? null : PhysicalAddress.Parse(value);
+        }
+
+        public override void WriteJson(JsonWriter writer, PhysicalAddress? value, JsonSerializer serializer)
+        {
+			writer.WriteValue(value?.ToString());
+        }
+    }
 }

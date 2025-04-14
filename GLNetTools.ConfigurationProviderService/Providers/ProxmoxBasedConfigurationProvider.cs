@@ -19,8 +19,24 @@ namespace GLNetTools.ConfigurationProviderService.Providers
 
 		public IConfigurationProvider.ITracker CreateTracker()
 		{
-			var vmWatcher = new FileSystemWatcher(Path.Combine(_options.PVEDirectoryBasePath, _options.VirtualMachines.DirectorySubPath));
-			var ctWatcher = new FileSystemWatcher(Path.Combine(_options.PVEDirectoryBasePath, _options.Containers.DirectorySubPath));
+            var vmWatcher = new FileSystemWatcher(Path.Combine(_options.PVEDirectoryBasePath, _options.VirtualMachines.DirectorySubPath))
+            {
+                Filter = "*.conf",
+                NotifyFilter = NotifyFilters.FileName |
+                                    NotifyFilters.DirectoryName |
+                                    NotifyFilters.LastWrite,
+
+                EnableRaisingEvents = true
+            };
+            var ctWatcher = new FileSystemWatcher(Path.Combine(_options.PVEDirectoryBasePath, _options.Containers.DirectorySubPath))
+			{
+                Filter = "*.conf",
+                NotifyFilter = NotifyFilters.FileName |
+                                    NotifyFilters.DirectoryName |
+                                    NotifyFilters.LastWrite,
+
+                EnableRaisingEvents = true
+            };
 
 			var tracker = new Tracker(this, vmWatcher, ctWatcher);
 			tracker.Init();
