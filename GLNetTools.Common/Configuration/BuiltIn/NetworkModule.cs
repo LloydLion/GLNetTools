@@ -35,7 +35,7 @@ namespace GLNetTools.Common.Configuration.BuiltIn
 		public class Master() : CommonStaticModel<Master, NoScopeKey>(MasterPrototype, BuiltInScopeTypes.Master)
 		{
 			public IPAddress FallbackDNS = IPAddress.Any;
-			public NetworkInterface? MainInterface;
+			public string? MainInterface;
 			public List<string> DNSZones = [];
 		}
 
