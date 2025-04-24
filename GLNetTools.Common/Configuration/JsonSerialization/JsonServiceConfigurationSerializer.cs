@@ -34,6 +34,8 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
 
         private class ServiceConfigurationConverter : JsonConverter<ServiceConfiguration>
         {
+            private const string VersionPropertyName = "#Version";
+
             private readonly ConfigurationScopeTypeRegistry _scopes;
             private readonly ConfigurationModuleRegistry _modules;
 
@@ -52,15 +54,21 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
                 JsonSerializer serializer
             )
             {
-                var data = serializer.Deserialize<Dictionary<string, Dictionary<string,  JObject>>>(reader);
+                var rawData = serializer.Deserialize<Dictionary<string, JObject>>(reader);
+                if (rawData is null)
+                    return null;
+                DateTime? version = null;
+                if (rawData.TryGetValue(VersionPropertyName, out var preVersion))
+                    version = preVersion.ToObject<DateTime>();
+                var data = rawData.ToDictionary(s => s.Key, s => s.Value.ToObject<Dictionary<string, JObject>>());
 
-                var scopes = data!.Select(preScope =>
+                var scopes = data.Select(preScope =>
                 {
                     var split = preScope.Key.Split(':');
                     var type = _scopes.GetByName(split[0]);
                     var key = type.Serializer!.Deserialize(split[1]);
 
-                    var projections = preScope.Value
+                    var projections = preScope.Value!
                         .Select(s => KeyValuePair.Create(s.Key, readProjection(s.Value, type, key, _modules.GetByName(s.Key))))
                         .Where(s => s.Value is not null).ToDictionary(s => s.Key, s => s.Value!);
 
@@ -100,6 +108,12 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
                 }
 
                 writer.WriteStartObject();
+                if (value.Version is not null)
+                {
+                    writer.WritePropertyName(VersionPropertyName);
+                    writer.WriteValue(value.Version.Value);
+                }
+
                 foreach (var scope in value.Scopes)
                 {
                     var property = $"{scope.WeakScopeType.Name}:{scope.WeakScopeType.Serializer!.Serialize(scope.WeakKey)}";

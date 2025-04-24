@@ -8,6 +8,7 @@ namespace GLNetTools.ConfigurationProviderService
 		private readonly IConfigurationBuilder _builder;
 		private readonly ILogger<ConfigurationHolder> _logger;
 		private readonly SemaphoreSlim _builderLock = new(1);
+		private readonly List<Action<ServiceConfiguration>> RebuiltHandlers = [];
 
 
 		public ConfigurationHolder(IConfigurationBuilder builder, ILogger<ConfigurationHolder> logger)
@@ -34,10 +35,52 @@ namespace GLNetTools.ConfigurationProviderService
 			}
 		}
 
+		public Task<ServiceConfiguration> AwaitForNewConfiguration(Predicate<ServiceConfiguration> predicate, bool checkCurrent = false)
+		{
+			_builderLock.Wait();
+			try
+			{
+
+				var currentConfig = Configuration;
+				if (checkCurrent && predicate(currentConfig))
+					return Task.FromResult(currentConfig);
+
+				var tcs = new TaskCompletionSource<ServiceConfiguration>();
+				RebuiltHandlers.Add(handler);
+				return tcs.Task;
+
+
+				void handler(ServiceConfiguration config)
+				{
+					if (predicate(config))
+					{
+						tcs.SetResult(config);
+					}
+				};
+			}
+			finally
+			{
+				_builderLock.Release();
+			}
+		}
+
 		public void RebuildConfiguration()
 		{
-			_configuration = _builder.Build();
-			_logger.LogInformation("Configuration has been rebuilt");
+			_builderLock.Wait();
+			try
+			{
+				var config = _builder.Build();
+				_configuration = config;
+
+				RebuiltHandlers.ForEach(s => s(config));
+				RebuiltHandlers.Clear();
+
+				_logger.LogInformation("Configuration has been rebuilt");
+			}
+			finally
+			{
+				_builderLock.Release();
+			}
 		}
 	}
 }

@@ -53,7 +53,8 @@
 				}).ToDictionary(s => s.Key, s => s.Value);
 
 				return ConfigurationScope.CreateWeak(scope.ScopeType, scope.Key, projections);
-			}).ToArray());
+			}).ToArray())
+			{ Version = DateTime.UtcNow };
 		}
 
 		public void TakeSnapshot()

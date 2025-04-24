@@ -1,6 +1,6 @@
 ﻿namespace GLNetTools.Common.Configuration
 {
-	public record ServiceConfiguration(IReadOnlyCollection<ConfigurationScope> Scopes)
+	public record ServiceConfiguration(IReadOnlyCollection<ConfigurationScope> Scopes, DateTime? Version = null)
 	{
 		public IReadOnlyCollection<ConfigurationScopeType> ScopeTypes { get; } = Scopes.Select(s => s.WeakScopeType).Distinct().ToArray();
 

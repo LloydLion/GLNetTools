@@ -17,9 +17,19 @@ internal class WebController
     }
 
 
-	public string HandleConfigurationRequest([FromBody] QueryModel query)
+	public async Task<string> HandleConfigurationRequest([FromBody] QueryModel query)
 	{
-		var configuration = _configuration.Configuration;
+		ServiceConfiguration configuration;
+		if (query.WaitForOlderThan is not null)
+		{
+			//configuration = await _configuration.AwaitForNewConfiguration(c => c.Version is null || c.Version.Value > query.WaitForOlderThan.Value, checkCurrent: true);
+			do
+			{
+				configuration = _configuration.Configuration;
+			}
+			while ((configuration.Version is null || configuration.Version.Value > query.WaitForOlderThan.Value) == false);
+		}
+		else configuration = _configuration.Configuration;
 
 		var requestedConfigurationPart = new ServiceConfiguration(configuration.Scopes
 		.Where(scope =>
@@ -32,7 +42,7 @@ internal class WebController
 		{
 			var filteredProjection = scope.Projections.Where(proj => query.IsModuleRequested(proj.Key)).ToDictionary(s => s.Key, s => s.Value);
 			return ConfigurationScope.CreateWeak(scope.WeakScopeType, scope.WeakKey, filteredProjection);
-		}).ToArray());
+		}).ToArray()) { Version = configuration.Version };
 
 		return _serializer.Serialize(requestedConfigurationPart);
 	}
@@ -49,7 +59,7 @@ internal class WebController
 
 		public string[] Modules { get; set; } = []; //Format: "Base", "Network"
 
-		public Guid? LongPoolToken { get; set; } = null;
+		public DateTime? WaitForOlderThan { get; set; } = null;
 
 
 		public bool IsModuleRequested(string moduleName)
