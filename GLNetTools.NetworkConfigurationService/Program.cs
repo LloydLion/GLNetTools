@@ -1,6 +1,9 @@
-﻿using GLNetTools.NetworkConfigurationService;
+﻿using GLNetTools.Common.Configuration;
+using GLNetTools.Common.Configuration.JsonSerialization;
+using GLNetTools.NetworkConfigurationService;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Text;
 
 #if DEBUG
 if (args.Contains("--no-dbg"))
@@ -15,48 +18,177 @@ if (args.Contains("--no-dbg"))
 var services = new ServiceCollection()
 	.AddLogging(s => s.AddConsole().SetMinimumLevel(LogLevel.Trace))
 
-	.AddSingleton(new ProxmoxBasedConfigurationProvider.Options())
-	.AddTransient<IServiceConfigurationProvider, ProxmoxBasedConfigurationProvider>()
-	
+	.AddTransient<IJsonServiceConfigurationSerializer, JsonServiceConfigurationSerializer>()
+	.AddSingleton(new ConfigurationLoader.Options() { ConfigurationServiceURL = new Uri(args[0]) })
+	.AddSingleton<ConfigurationLoader>()
+
 	.AddSingleton<INetworkService, DomainNameSystemService>()
 	.AddSingleton<INetworkService, DynamicHostConfigurationProtocolService>()
 
 	.BuildServiceProvider();
 
 var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger<Program>();
+var configurationLoader = services.GetRequiredService<ConfigurationLoader>();
+var networkServices = services.GetServices<INetworkService>().ToHashSet();
+var globalCTS = new CancellationTokenSource();
 
-var configurationProvider = services.GetRequiredService<IServiceConfigurationProvider>();
-var configuration = await configurationProvider.FetchConfigurationAsync();
+Console.CancelKeyPress += (s, e) => { logger.LogInformation("SIGINT detected. Stopping..."); globalCTS.Cancel(); };
 
-logger.LogInformation("Using configuration: DNSZones=[{DNSZones}], FallbackDNSServer={FallbackDNSServer}, MainInterface={MainInterface}, ServerName={ServerName}",
-	configuration.DNSZones, configuration.FallbackDNSServer, configuration.MainInterface?.Name, configuration.ServerName);
-foreach (var gm in configuration.Machines)
-	logger.LogInformation("Using guest machine configuration: Id={Id}, Name={Name}, MIPA={MIPA}", gm.Id, gm.Name, gm.MainInterfacePhysicalAddress);
-
-var networkServices = services.GetServices<INetworkService>();
-var activeServices = new List<INetworkService>();
-
+HashSet<string> scopes = [], modules = [];
 foreach (var service in networkServices)
 {
-	var isSuccess = service.Setup(configuration);
-	if (isSuccess)
-	{
-		logger.LogInformation("Network service {TypeName} has been setup", service.GetType().FullName);
-		activeServices.Add(service);
-	}
-	else
-	{
-		logger.LogWarning("Network service {TypeName} setup with errors and will not be started", service.GetType().FullName);
-	}
+	service.GetConfigurationQueryOptions(out var serviceScopes, out var serviceModules);
+	foreach (var item in serviceScopes) scopes.Add(item);
+	foreach (var item in serviceModules) modules.Add(item);
 }
 
-foreach (var service in activeServices)
+var startedServices = new HashSet<INetworkService>();
+
+try
 {
-	service.Start();
-	logger.LogInformation("Network service {TypeName} has been started", service.GetType().FullName);
+	ServiceConfiguration actualConfiguration;
+	var updates = configurationLoader.LoadConfigurationAsync(scopes, modules, globalCTS.Token).GetAsyncEnumerator();
+
+	while (true) // While `actualConfiguration` is not initialized
+	{
+		await updates.MoveNextAsync();
+		bool criticallyStarted = false;
+
+		if (updates.Current is ErroredConfigurationUpdateEvent error)
+		{
+			logFetchError(error);
+			logger.LogInformation("No configuration loaded at startup, starting services in anti-crisis critical mode");
+			if (criticallyStarted == false)
+			{
+				foreach (var service in networkServices)
+				{
+					try
+					{
+						service.StartCritical();
+						logger.LogDebug("Service {Service} started in critical mode", service);
+						startedServices.Add(service);
+					}
+					catch (Exception ex)
+					{
+						logger.LogError(ex, "Error during service {Service} critical starting", service);
+					}
+				}
+
+				criticallyStarted = true;
+			}
+		}
+		else if (updates.Current is SuccessfulConfigurationUpdateEvent success)
+		{
+			logger.LogInformation("First version of configuration loaded");
+			actualConfiguration = success.NewConfiguration;
+			printConfiguration(actualConfiguration);
+			break;
+		}
+		else throw new NotSupportedException();
+	}
+
+
+	while (true) // Until exit signal
+	{
+		foreach (var service in startedServices.ToArray())
+		{
+			try
+			{
+				service.Stop();
+				logger.LogDebug("Service {Service} stopped", service);
+				startedServices.Remove(service);
+			}
+			catch (Exception ex)
+			{
+				logger.LogError(ex, "Error during service {Service} stopping", service);
+			}
+		}
+
+		foreach (var service in networkServices.Except(startedServices))
+		{
+			try
+			{
+				service.Start(actualConfiguration);
+				logger.LogDebug("Service {Service} started", service);
+				startedServices.Add(service);
+			}
+			catch (Exception ex)
+			{
+				logger.LogError(ex, "Error during service {Service} starting", service);
+			}
+		}
+
+		while (true) // While `actualConfiguration` is not changed
+		{
+			await updates.MoveNextAsync();
+			if (updates.Current is ErroredConfigurationUpdateEvent error)
+			{
+				logFetchError(error);
+				continue;
+			}
+			else if (updates.Current is SuccessfulConfigurationUpdateEvent success)
+			{
+				logger.LogInformation("New configuration loaded");
+				actualConfiguration = success.NewConfiguration;
+				printConfiguration(actualConfiguration);
+				break;
+			}
+			else throw new NotSupportedException();
+		}
+
+	}
+}
+catch (TaskCanceledException)
+{
+	logger.LogInformation("Stop signal received, performing exit");
+}
+catch (Exception ex)
+{
+	logger.LogCritical(ex, "Critical error in main cycle, exiting...");
 }
 
-var exitEvent = new AutoResetEvent(false);
-Console.CancelKeyPress += (s, e) => exitEvent.Set();
-exitEvent.WaitOne();
-logger.LogInformation("SIGINT detected, bye.");
+
+foreach (var service in startedServices)
+{
+	try
+	{
+		service.Stop();
+		logger.LogDebug("Service {Service} stopped", service);
+	}
+	catch (Exception ex)
+	{
+		logger.LogError(ex, "Error during service {Service} stopping", service);
+	}
+}
+
+logger.LogInformation("Done.");
+
+
+
+void logFetchError(ErroredConfigurationUpdateEvent update)
+{
+	logger.LogError(update.Exception, "Unexcepted error during fetching new configuration");
+}
+
+void printConfiguration(ServiceConfiguration configuration)
+{
+	var builder = new StringBuilder();
+	foreach (var scopeType in configuration.ScopeTypes)
+	{
+		builder.AppendLine($"\tScopeType{{Name={scopeType.Name}, KeyType={scopeType.KeyType.FullName}}}:");
+		foreach (var scope in configuration.FilterScopes(scopeType))
+		{
+			builder.AppendLine($"\t\tScope{{Key={scope.WeakKey}}}:");
+			foreach (var projection in scope.Projections)
+			{
+				builder.AppendLine($"\t\t\tProjection{{Prototype.Module.Name={projection.Key}}}:");
+				foreach (var property in projection.Value.Data)
+				{
+					builder.AppendLine($"\t\t\t\t[{property.Key}] <=> Property{{Type={property.Value.Property.Type.FullName}}} <=> [{property.Value.Value}]");
+				}
+			}
+		}
+	}
+
+	logger.LogDebug("Using configuration: \n{ConfigurationDump}", builder.ToString());
+}

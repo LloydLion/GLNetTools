@@ -2,8 +2,11 @@
 using DNS.Protocol;
 using DNS.Protocol.ResourceRecords;
 using DNS.Server;
+using GLNetTools.Common.Configuration;
+using GLNetTools.Common.Configuration.BuiltIn;
 using Microsoft.Extensions.Logging;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
 namespace GLNetTools.NetworkConfigurationService
@@ -20,37 +23,48 @@ namespace GLNetTools.NetworkConfigurationService
 		}
 
 
-		public bool Setup(ServiceConfiguration configuration)
+		public void StartCritical()
 		{
-			var mainInterface = configuration.MainInterface;
-			if (mainInterface is null)
-			{
-				_logger.LogWarning("Running in critical mode, local GM addresses will not be resolved");
-				_server = new DnsServer(configuration.FallbackDNSServer);
-				_server.Responded += logResponded;
-				return true;
-			}
-			
+			IPAddress defaultFallbackDNS = IPAddress.Parse("1.1.1.1");
+
+			_logger.LogWarning("Running in critical mode, local GM addresses will not be resolved");
+			_server = new DnsServer(defaultFallbackDNS);
+			_server.Responded += LogResponded;
+			_server.Errored += LogErrored;
+		}
+
+		public void Start(ServiceConfiguration configuration)
+		{
+			var masterScope = configuration.GetScope(BuiltInScopeTypes.Master, NoScopeKey.Instance);
+			var masterNetworkConfig = masterScope.GetProjection(NetworkModule.MasterPrototype);
+			var masterBaseConfig = masterScope.GetProjection(BaseModule.MasterPrototype);
+
+			var mainInterface = NetworkInterface.GetAllNetworkInterfaces().Single(s => s.Name == masterNetworkConfig.MainInterface);
+
 			var ip = mainInterface.GetIPProperties().UnicastAddresses.First(s => s.Address.AddressFamily == AddressFamily.InterNetwork);
 
-			var masterFile = new ConfigurationBasedDNSResolver(configuration.FallbackDNSServer);
+			var masterFile = new ConfigurationBasedDNSResolver(masterNetworkConfig.FallbackDNS);
 			_server = new DnsServer(masterFile);
-			_server.Responded += logResponded;
-			_server.Errored += logErrored;
+			_server.Responded += LogResponded;
+			_server.Errored += LogErrored;
 
 			Span<byte> address = stackalloc byte[4];
 			ip.Address.TryWriteBytes(address, out _);
 
-			foreach (var gm in configuration.Machines)
+
+			var machines = configuration.FilterScopes(BuiltInScopeTypes.GuestMachine).Select(s =>
+				new { s.Key.Id, Network = s.GetProjection(NetworkModule.GuestMachinePrototype), Base = s.GetProjection(BaseModule.GuestMachinePrototype) });
+
+			foreach (var gm in machines)
 			{
 				address[3] = gm.Id;
 				var ipAddress = new IPAddress(address);
-				
-				foreach (var zone in configuration.DNSZones)
+
+				foreach (var zone in masterNetworkConfig.DNSZones)
 				{
 					try
 					{
-						var domain = formDomain(zone, gm);
+						var domain = formDomain(zone, gm.Base.HostName, gm.Id);
 						masterFile.Register(domain, ipAddress);
 						_logger.LogDebug("A {Domain} -> {Address} added to resolver", domain, ipAddress);
 					}
@@ -62,43 +76,53 @@ namespace GLNetTools.NetworkConfigurationService
 				_logger.LogTrace("GM {Id} finished to be processed", gm.Id);
 			}
 
-			return true;
+			_server.Listen();
 
 
 
-			void logResponded(object? sender, DnsServer.RespondedEventArgs args)
+			Domain formDomain(string template, string hostName, byte id)
 			{
-				var questions = string.Join(", ", args.Request.Questions.Select(s => s.Type.ToString() + "=" + s.Name.ToString()));
-				var answers = string.Join(", ", args.Response.AnswerRecords);
-
-				_logger.LogDebug("Request from {RemoteEndPoint} for [{Questions}] satisfied with [{Answers}]", args.Remote, questions, answers);
-			}
-
-			void logErrored(object? sender, DnsServer.ErroredEventArgs args)
-			{
-				_logger.LogError(args.Exception, "Error during processing request");
-			}
-
-			Domain formDomain(string template, GuestMachineConfiguration gm)
-			{
-				template = template.Replace("{Name}", gm.Name);
-				template = template.Replace("{Id}", gm.Id.ToString());
-				template = template.Replace("{ServerName}", configuration.ServerName);
+				template = template.Replace("{Name}", hostName);
+				template = template.Replace("{Id}", id.ToString());
+				template = template.Replace("{ServerName}", masterBaseConfig.HostName);
 				return new Domain(template);
 			}
 		}
 
-		public void Start()
+		public void Restart(ServiceConfiguration newConfiguration)
 		{
-			if (_server is null)
-				throw new InvalidOperationException("Setup service first");
-			_server.Listen();
+			Stop();
+			Start(newConfiguration);
+		}
+
+		public void Stop()
+		{
+			_server!.Dispose();
+		}
+
+		public void GetConfigurationQueryOptions(out string[] scopes, out string[] modules)
+		{
+			scopes = [BuiltInScopeTypes.Master.Name, BuiltInScopeTypes.GuestMachine.Name];
+			modules = [NetworkModule.Instance.Name, BaseModule.Instance.Name];
+		}
+
+		private void LogResponded(object? sender, DnsServer.RespondedEventArgs args)
+		{
+			var questions = string.Join(", ", args.Request.Questions.Select(s => s.Type.ToString() + "=" + s.Name.ToString()));
+			var answers = string.Join(", ", args.Response.AnswerRecords);
+
+			_logger.LogDebug("Request from {RemoteEndPoint} for [{Questions}] satisfied with [{Answers}]", args.Remote, questions, answers);
+		}
+
+		private void LogErrored(object? sender, DnsServer.ErroredEventArgs args)
+		{
+			_logger.LogError(args.Exception, "Error during processing request");
 		}
 
 
 		private class ConfigurationBasedDNSResolver : IRequestResolver
 		{
-			private readonly Dictionary<Domain, IPAddress> _map = new();
+			private readonly Dictionary<Domain, IPAddress> _map = [];
 			private readonly UdpRequestResolver _fallbackDNSServer;
 
 

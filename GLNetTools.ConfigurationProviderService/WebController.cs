@@ -22,12 +22,7 @@ internal class WebController
 		ServiceConfiguration configuration;
 		if (query.WaitForOlderThan is not null)
 		{
-			//configuration = await _configuration.AwaitForNewConfiguration(c => c.Version is null || c.Version.Value > query.WaitForOlderThan.Value, checkCurrent: true);
-			do
-			{
-				configuration = _configuration.Configuration;
-			}
-			while ((configuration.Version is null || configuration.Version.Value > query.WaitForOlderThan.Value) == false);
+			configuration = await _configuration.AwaitForNewConfiguration(c => c.Version is null || c.Version.Value > query.WaitForOlderThan.Value, checkCurrent: true);
 		}
 		else configuration = _configuration.Configuration;
 
@@ -55,7 +50,7 @@ internal class WebController
 		private const string ScopeTypeSeparator = ":";
 
 
-		public string[] Scopes { get; set; } = []; //Format: "Master", "GuestMachine:123"
+		public string[] Scopes { get; set; } = []; //Format: "Master:*", "GuestMachine:123"
 
 		public string[] Modules { get; set; } = []; //Format: "Base", "Network"
 

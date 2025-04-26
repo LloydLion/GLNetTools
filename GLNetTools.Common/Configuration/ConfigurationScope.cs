@@ -7,10 +7,10 @@
 			return Projections[module.Name];
 		}
 
-		public TStaticModel GetProjection<TStaticModel>(IConfigurationModule module, ConfigurationModuleProjectionStaticPrototype<TStaticModel> prototype)
+		public TStaticModel GetProjection<TStaticModel>(ConfigurationModuleProjectionStaticPrototype<TStaticModel> prototype)
 			where TStaticModel : class
 		{
-			return prototype.MapProjectionToStaticModel(GetProjectionWeak(module));
+			return prototype.MapProjectionToStaticModel(GetProjectionWeak(prototype.Module));
 		}
 
 		public static ConfigurationScope CreateWeak(ConfigurationScopeType WeakScopeType, object WeakKey,

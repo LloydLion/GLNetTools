@@ -1,9 +1,15 @@
-﻿namespace GLNetTools.NetworkConfigurationService
+﻿using GLNetTools.Common.Configuration;
+
+namespace GLNetTools.NetworkConfigurationService
 {
 	internal interface INetworkService
 	{
-		public bool Setup(ServiceConfiguration configuration);
+		public void GetConfigurationQueryOptions(out string[] scopes, out string[] modules);
 
-		public void Start();
+		public void StartCritical();
+
+		public void Start(ServiceConfiguration configuration);
+
+		public void Stop();
 	}
 }

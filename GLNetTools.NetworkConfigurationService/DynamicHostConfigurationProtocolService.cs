@@ -1,6 +1,9 @@
 ﻿using GitHub.JPMikkers.DHCP;
+using GLNetTools.Common.Configuration;
+using GLNetTools.Common.Configuration.BuiltIn;
 using Microsoft.Extensions.Logging;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
 namespace GLNetTools.NetworkConfigurationService
@@ -17,15 +20,14 @@ namespace GLNetTools.NetworkConfigurationService
 		}
 
 
-		public bool Setup(ServiceConfiguration configuration)
+		public void Start(ServiceConfiguration configuration)
 		{
-			if (configuration.MainInterface is null)
-			{
-				_logger.LogCritical("DHCP service cannot setup in critical mode");
-				return false;
-			}
+			var masterScope = configuration.GetScope(BuiltInScopeTypes.Master, NoScopeKey.Instance);
+			var masterNetworkConfig = masterScope.GetProjection(NetworkModule.MasterPrototype);
 
-			var ip = configuration.MainInterface.GetIPProperties().UnicastAddresses.First(s => s.Address.AddressFamily == AddressFamily.InterNetwork);
+			var mainInterface = NetworkInterface.GetAllNetworkInterfaces().Single(s => s.Name == masterNetworkConfig.MainInterface);
+			var ip = mainInterface.GetIPProperties().UnicastAddresses.First(s => s.Address.AddressFamily == AddressFamily.InterNetwork);
+
 			_logger.LogDebug("Using {IPAddress}:67 for DHCP server", ip.Address);
 
 			Span<byte> address = stackalloc byte[4];
@@ -55,7 +57,7 @@ namespace GLNetTools.NetworkConfigurationService
 			_server.Options = options;
 
 			var reservations = new List<ReservationItem>();
-			foreach (var gm in configuration.Machines)
+			foreach (var gm in configuration.FilterScopes(BuiltInScopeTypes.GuestMachine).Select(s => new { s.Key.Id, s.GetProjection(NetworkModule.GuestMachinePrototype).MainInterfacePhysicalAddress }))
 			{
 				address[3] = gm.Id;
 				var targetIP = new IPAddress(address);
@@ -71,14 +73,31 @@ namespace GLNetTools.NetworkConfigurationService
 			}
 
 			_server.Reservations = reservations;
-			return true;
+
+			_server.Start();
 		}
 
-		public void Start()
+
+		public void GetConfigurationQueryOptions(out string[] scopes, out string[] modules)
 		{
-			if (_server is null)
-				throw new InvalidOperationException("Setup service first");
-			_server.Start();
+			scopes = [BuiltInScopeTypes.Master.Name, BuiltInScopeTypes.GuestMachine.Name];
+			modules = [NetworkModule.Instance.Name];
+		}
+
+		public void StartCritical()
+		{
+			throw new NotSupportedException();
+		}
+
+		public void Restart(ServiceConfiguration newConfiguration)
+		{
+			Stop();
+			Start(newConfiguration);
+		}
+
+		public void Stop()
+		{
+			_server!.Stop();
 		}
 	}
 }
