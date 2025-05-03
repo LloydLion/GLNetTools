@@ -1,4 +1,5 @@
 ﻿using GLNetTools.Common.Configuration;
+using GLNetTools.Common.Configuration.BuiltIn;
 using GLNetTools.Common.Configuration.JsonSerialization;
 using GLNetTools.NetworkConfigurationService;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using System.Text;
 
 #if DEBUG
-if (args.Contains("--no-dbg"))
+if (args.Contains("--no-dbg") == false)
 {
 	Console.WriteLine("Waiting for debugger to attach");
 	while (!System.Diagnostics.Debugger.IsAttached)
@@ -18,7 +19,12 @@ if (args.Contains("--no-dbg"))
 var services = new ServiceCollection()
 	.AddLogging(s => s.AddConsole().SetMinimumLevel(LogLevel.Trace))
 
+	.AddSingleton<ConfigurationScopeTypeRegistry>()
+	.AddSingleton<ConfigurationModuleRegistry>()
+
+	.AddTransient(sp => JSONNetConverters.CreateSerializer())
 	.AddTransient<IJsonServiceConfigurationSerializer, JsonServiceConfigurationSerializer>()
+
 	.AddSingleton(new ConfigurationLoader.Options() { ConfigurationServiceURL = new Uri(args[0]) })
 	.AddSingleton<ConfigurationLoader>()
 
@@ -28,11 +34,24 @@ var services = new ServiceCollection()
 	.BuildServiceProvider();
 
 var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger<Program>();
+
+var scopeRegistry = services.GetRequiredService<ConfigurationScopeTypeRegistry>();
+scopeRegistry.Register(BuiltInScopeTypes.Master);
+scopeRegistry.Register(BuiltInScopeTypes.GuestMachine);
+logger.LogTrace("ConfigurationScopeType registration complete");
+
+var moduleRegistry = services.GetRequiredService<ConfigurationModuleRegistry>();
+moduleRegistry.Register(BaseModule.Instance);
+moduleRegistry.Register(NetworkModule.Instance);
+logger.LogTrace("ConfigurationModule registration complete");
+
+
+
 var configurationLoader = services.GetRequiredService<ConfigurationLoader>();
 var networkServices = services.GetServices<INetworkService>().ToHashSet();
 var globalCTS = new CancellationTokenSource();
 
-Console.CancelKeyPress += (s, e) => { logger.LogInformation("SIGINT detected. Stopping..."); globalCTS.Cancel(); };
+Console.CancelKeyPress += (s, e) => { logger.LogInformation("SIGINT detected. Stopping..."); globalCTS.Cancel(); e.Cancel = true; };
 
 HashSet<string> scopes = [], modules = [];
 foreach (var service in networkServices)
@@ -79,8 +98,8 @@ try
 		}
 		else if (updates.Current is SuccessfulConfigurationUpdateEvent success)
 		{
-			logger.LogInformation("First version of configuration loaded");
 			actualConfiguration = success.NewConfiguration;
+			logger.LogInformation("First version of configuration loaded, Version=[{Version}]", actualConfiguration.Version);
 			printConfiguration(actualConfiguration);
 			break;
 		}
@@ -128,7 +147,7 @@ try
 			}
 			else if (updates.Current is SuccessfulConfigurationUpdateEvent success)
 			{
-				logger.LogInformation("New configuration loaded");
+				logger.LogInformation("New configuration loaded, [{OldVersion}] -> [{NewVersion}]", actualConfiguration.Version, success.NewConfiguration.Version);
 				actualConfiguration = success.NewConfiguration;
 				printConfiguration(actualConfiguration);
 				break;

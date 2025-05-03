@@ -59,7 +59,7 @@ internal class Program
 		var moduleRegistry = app.Services.GetRequiredService<ConfigurationModuleRegistry>();
 		moduleRegistry.Register(BaseModule.Instance);
 		moduleRegistry.Register(NetworkModule.Instance);
-		logger.LogTrace("ConfigurationScopeType registration complete");
+		logger.LogTrace("ConfigurationModule registration complete");
 
 		var holder = app.Services.GetRequiredService<ConfigurationHolder>();
 		var dispatcher = app.Services.GetRequiredService<ConfigurationProviderDispatcher>();

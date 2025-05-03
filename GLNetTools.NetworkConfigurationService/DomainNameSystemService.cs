@@ -31,6 +31,8 @@ namespace GLNetTools.NetworkConfigurationService
 			_server = new DnsServer(defaultFallbackDNS);
 			_server.Responded += LogResponded;
 			_server.Errored += LogErrored;
+
+			_server.Listen();
 		}
 
 		public void Start(ServiceConfiguration configuration)

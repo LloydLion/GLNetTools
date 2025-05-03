@@ -14,7 +14,7 @@ namespace GLNetTools.Common.Configuration.BuiltIn
 			ConfigurationModuleProjectionStaticPrototype<GuestMachine>.Create(DefaultBehavior.Instance, Instance);
 
 
-		private readonly Dictionary<ConfigurationScopeType, ConfigurationModuleProjectionPrototype> _prototypes = new()
+		private readonly static Dictionary<ConfigurationScopeType, ConfigurationModuleProjectionPrototype> _prototypes = new()
 		{
 			[BuiltInScopeTypes.Master] = MasterPrototype,
 			[BuiltInScopeTypes.GuestMachine] = GuestMachinePrototype

@@ -64,11 +64,11 @@ internal class WebController
 
 		public bool IsScopeRequested(string typeName, object key, IConfigurationScopeKeySerializer keySerializer)
 		{
-			var SplittedScopes = Scopes.Select(s => { var split = s.Split(ScopeTypeSeparator); return (split[0], split[1]); }).ToArray();
-			return SplittedScopes.Any(s =>
-				(s.Item1 == AllScopes && s.Item2 == AllScopes) ||
-				(s.Item1 == typeName && s.Item2 == AllScopes) ||
-				(s.Item1 == typeName && keySerializer.Compare(key, s.Item2))
+			var splittedScopes = Scopes.Select(s => { var split = s.Split(ScopeTypeSeparator); return split; }).ToArray();
+			return splittedScopes.Any(s =>
+				(s[0] == AllScopes && (s.Length == 1 || s[1] == AllScopes)) ||
+				(s[0] == typeName && (s.Length == 1 || s[1] == AllScopes)) ||
+				(s.Length == 2 && s[0] == typeName && keySerializer.Compare(key, s[1]))
 			);
 		}
 	}

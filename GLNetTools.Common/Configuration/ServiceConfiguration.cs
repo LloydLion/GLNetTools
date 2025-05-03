@@ -8,7 +8,7 @@
 		public IEnumerable<ConfigurationScope> FilterScopes(ConfigurationScopeType type) => Scopes.Where(s => s.WeakScopeType == type);
 
 		public IEnumerable<ConfigurationScope<TKey>> FilterScopes<TKey>(ConfigurationScopeType<TKey> type) where TKey : notnull
-			=> FilterScopes(type).OfType<ConfigurationScope<TKey>>();
+			=> FilterScopes((ConfigurationScopeType)type).OfType<ConfigurationScope<TKey>>();
 
 		public ConfigurationScope GetScopeWeak(ConfigurationScopeType type, object key) => Scopes.Single(s => s.WeakScopeType == type && Equals(key, s.WeakKey));
 

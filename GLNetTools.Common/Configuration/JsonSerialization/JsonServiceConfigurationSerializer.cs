@@ -56,12 +56,15 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
 				JsonSerializer serializer
 			)
 			{
-				var rawData = serializer.Deserialize<Dictionary<string, JObject>>(reader);
+				var rawData = serializer.Deserialize<Dictionary<string, JToken>>(reader);
 				if (rawData is null)
 					return null;
 				DateTime? version = null;
 				if (rawData.TryGetValue(VersionPropertyName, out var preVersion))
+				{
 					version = preVersion.ToObject<DateTime>();
+					rawData.Remove(VersionPropertyName);
+				}
 				var data = rawData.ToDictionary(s => s.Key, s => s.Value.ToObject<Dictionary<string, JObject>>());
 
 				var scopes = data.Select(preScope =>
@@ -80,7 +83,7 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
 				if (hasExistingValue && existingValue is not null)
 					scopes = scopes.Concat(existingValue.Scopes).ToArray();
 
-				return new ServiceConfiguration(scopes);
+				return new ServiceConfiguration(scopes) { Version = version };
 
 
 
@@ -95,7 +98,7 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
 					{
 						var value = preProjection[property.Key];
 						if (value is not null)
-							data.Add(property.Key, value.ToObject(property.Value.Type) ?? throw new NullReferenceException());
+							data.Add(property.Key, value.ToObject(property.Value.Type, serializer) ?? throw new NullReferenceException());
 					}
 					return prototype.CreateProjection(data);
 				}

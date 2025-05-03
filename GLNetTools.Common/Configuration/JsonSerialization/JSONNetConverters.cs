@@ -9,7 +9,7 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
 		public class IPAddressConverter : JsonConverter<IPAddress>
 		{
 			public override IPAddress? ReadJson(JsonReader reader, Type objectType, IPAddress? existingValue, bool hasExistingValue, JsonSerializer serializer)
-				=> IPAddress.Parse(reader.ReadAsString()!);
+				=> reader.Value is not string value ? null : IPAddress.Parse(value);
 
 			public override void WriteJson(JsonWriter writer, IPAddress? value, JsonSerializer serializer)
 				=> writer.WriteValue(value?.ToString());
@@ -18,15 +18,10 @@ namespace GLNetTools.Common.Configuration.JsonSerialization
 		public class PhysicalAddressConverter : JsonConverter<PhysicalAddress>
 		{
 			public override PhysicalAddress? ReadJson(JsonReader reader, Type objectType, PhysicalAddress? existingValue, bool hasExistingValue, JsonSerializer serializer)
-			{
-				var value = reader.ReadAsString();
-				return value is null ? null : PhysicalAddress.Parse(value);
-			}
+				=> reader.Value is not string value ? null : PhysicalAddress.Parse(value);
 
 			public override void WriteJson(JsonWriter writer, PhysicalAddress? value, JsonSerializer serializer)
-			{
-				writer.WriteValue(value?.ToString());
-			}
+				=> writer.WriteValue(value?.ToString());
 		}
 
 

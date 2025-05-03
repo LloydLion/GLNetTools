@@ -1,6 +1,6 @@
 ﻿using GLNetTools.Common.Configuration;
 using GLNetTools.Common.Configuration.JsonSerialization;
-using Newtonsoft.Json;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 
 namespace GLNetTools.NetworkConfigurationService
@@ -39,10 +39,10 @@ namespace GLNetTools.NetworkConfigurationService
 						var request = new HttpRequestMessage
 						{
 							Method = HttpMethod.Get,
-							Content = new StringContent(JsonConvert.SerializeObject(query)),
+							Content = JsonContent.Create(query),
 							RequestUri = _options.ConfigurationServiceURL
 						};
-
+						
 						response = await client.SendAsync(request, cancellationToken);
 					}
 					catch (TaskCanceledException)
@@ -78,6 +78,8 @@ namespace GLNetTools.NetworkConfigurationService
 
 				if (update is ErroredConfigurationUpdateEvent)
 					await Task.Delay(_options.ErrorTimeout, cancellationToken);
+				else if (update is SuccessfulConfigurationUpdateEvent { NewConfiguration.Version: null })
+					await Task.Delay(_options.NoLongPoolTimeout, cancellationToken);
 			}
 		}
 
@@ -87,6 +89,8 @@ namespace GLNetTools.NetworkConfigurationService
 			public TimeSpan LongPoolTimeout { get; init; } = TimeSpan.FromMinutes(2);
 
 			public TimeSpan ErrorTimeout { get; init; } = TimeSpan.FromMinutes(1);
+
+			public TimeSpan NoLongPoolTimeout { get; init; } = TimeSpan.FromMinutes(5);
 
 			public required Uri ConfigurationServiceURL { get; init; }
 		}
